@@ -1,0 +1,8 @@
+[package]
+name = "calc_lang"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+parsr = "1.0.4"
+gxhash = "3.5.0"
