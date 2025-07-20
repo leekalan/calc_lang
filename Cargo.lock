@@ -22,8 +22,6 @@ dependencies = [
 [[package]]
 name = "parsr"
 version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "739235b7ad4f1863a4fd0593477e353bf9ceb3ef740f07c9cab24f6f769b6ed7"
 dependencies = [
  "gxhash",
  "token-precedence",
@@ -38,5 +36,3 @@ checksum = "8a0d197bd2c9dc6e53b84da9556a69ba4cdfab8619eb41a8bd1cc2027a0f6b1d"
 [[package]]
 name = "token-precedence"
 version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17f9e054241b2202c5b0afe074fd6af2a0a45eb327a7936e41bebe5d5b1a4d36"

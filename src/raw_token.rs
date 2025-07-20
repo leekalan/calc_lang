@@ -1,8 +1,11 @@
+use std::fmt::Display;
+
 use parsr::{
     core::trim::TrimWhitespace,
     input::{Entry, Input, InputExt, InvalidUtf8},
     interner::{Id, Interner},
     parse::{IsParse, ParseError, ParseExt, ParseIterError, ParseMutIter},
+    token::span::Spanned,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -29,19 +32,30 @@ pub fn parse_raw_tokens<'a: 'b, 'b, I: Input>(
     input: &'a mut I,
     interner: &'b mut Interner,
 ) -> Result<
-    impl Iterator<Item = Result<RawToken, ParseIterError<UnexpectedCharacter>>> + 'b,
+    impl Iterator<Item = Result<Spanned<RawToken>, ParseIterError<Spanned<UnexpectedCharacter>>>> + 'b,
     InvalidUtf8,
 > {
-    let parser = ParseRawToken.mapped_mut(|token: RawTokenInput| match token {
-        RawTokenInput::Alphabetic(entry) => {
-            let id = interner.insert(entry.get());
+    let parser = ParseRawToken.mapped_mut(|token: RawTokenInput| {
+        let span = match &token {
+            RawTokenInput::Alphabetic(entry) => entry.span(),
+            RawTokenInput::Numeric(spanned) => spanned.span,
+            RawTokenInput::Symbol(spanned) => spanned.span,
+        };
 
-            entry.consume();
+        Spanned::new(
+            match token {
+                RawTokenInput::Alphabetic(entry) => {
+                    let id = interner.insert(entry.get());
 
-            RawToken::Ident(id)
-        }
-        RawTokenInput::Numeric(num) => RawToken::Number(num),
-        RawTokenInput::Symbol(sym) => RawToken::Symbol(sym),
+                    entry.consume();
+
+                    RawToken::Ident(id)
+                }
+                RawTokenInput::Numeric(num) => RawToken::Number(num.inner),
+                RawTokenInput::Symbol(sym) => RawToken::Symbol(sym.inner),
+            },
+            span,
+        )
     });
 
     ParseMutIter::new(input, TrimWhitespace, parser)
@@ -49,8 +63,8 @@ pub fn parse_raw_tokens<'a: 'b, 'b, I: Input>(
 
 pub enum RawTokenInput<'a> {
     Alphabetic(Entry<'a>),
-    Numeric(f64),
-    Symbol(Symbol),
+    Numeric(Spanned<f64>),
+    Symbol(Spanned<Symbol>),
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -59,9 +73,15 @@ pub struct ParseRawToken;
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UnexpectedCharacter;
 
+impl Display for UnexpectedCharacter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Unexpected character")
+    }
+}
+
 impl<'a> IsParse<'a> for ParseRawToken {
     type Output = RawTokenInput<'a>;
-    type Error = UnexpectedCharacter;
+    type Error = Spanned<UnexpectedCharacter>;
 
     fn __parse<I: ?Sized + Input>(
         self,
@@ -76,10 +96,12 @@ impl<'a> IsParse<'a> for ParseRawToken {
             c if c.is_numeric() => {
                 let entry = input.read_until_entry(8, |c| !(char::is_numeric(c) || c == '.'))?;
 
-                let num = entry
-                    .get()
-                    .parse::<f64>()
-                    .map_err(|_| ParseError::new(UnexpectedCharacter))?;
+                let num = entry.spanned(
+                    entry
+                        .get()
+                        .parse::<f64>()
+                        .map_err(|_| ParseError::new(entry.spanned(UnexpectedCharacter)))?,
+                );
 
                 entry.consume();
 
@@ -88,18 +110,18 @@ impl<'a> IsParse<'a> for ParseRawToken {
             _ => {
                 let entry = input.peek_entry()?;
 
-                let ret = match entry.get() {
-                    '=' => RawTokenInput::Symbol(Symbol::Equals),
-                    '+' => RawTokenInput::Symbol(Symbol::Add),
-                    '-' => RawTokenInput::Symbol(Symbol::Sub),
-                    '*' => RawTokenInput::Symbol(Symbol::Mul),
-                    '/' => RawTokenInput::Symbol(Symbol::Div),
-                    '(' => RawTokenInput::Symbol(Symbol::LeftParen),
-                    ')' => RawTokenInput::Symbol(Symbol::RightParen),
-                    '%' => RawTokenInput::Symbol(Symbol::Print),
-                    ';' => RawTokenInput::Symbol(Symbol::Semicolon),
-                    _ => return Err(ParseError::new(UnexpectedCharacter)),
-                };
+                let ret = RawTokenInput::Symbol(entry.spanned(match entry.get() {
+                    '=' => Symbol::Equals,
+                    '+' => Symbol::Add,
+                    '-' => Symbol::Sub,
+                    '*' => Symbol::Mul,
+                    '/' => Symbol::Div,
+                    '(' => Symbol::LeftParen,
+                    ')' => Symbol::RightParen,
+                    '%' => Symbol::Print,
+                    ';' => Symbol::Semicolon,
+                    _ => return Err(ParseError::new(entry.spanned(UnexpectedCharacter))),
+                }));
 
                 entry.consume();
 
@@ -124,6 +146,7 @@ mod tests {
         let tokens = parse_raw_tokens(&mut input, &mut interner)
             .unwrap()
             .map(Result::unwrap)
+            .map(|r| r.inner)
             .collect::<Vec<_>>();
 
         let id = interner.insert("a");

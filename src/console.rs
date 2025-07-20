@@ -13,7 +13,7 @@ pub fn console() {
     let mut state = State::new();
 
     loop {
-        print!("> ");
+        print!("< ");
 
         stdout().flush().unwrap();
 
@@ -27,15 +27,23 @@ pub fn console() {
             break;
         }
 
+        print!("> ");
+        stdout().flush().unwrap();
+
         let mut view = StrView::new(&line);
 
-        let raw_tokens = parse_raw_tokens(&mut view, &mut interner)
-            .unwrap()
-            .map(|r| r.expect("TODO: handle error"));
+        let raw_tokens = parse_raw_tokens(&mut view, &mut interner).unwrap();
 
-        let tokens = resolved_tokens(raw_tokens).map(|r| r.expect("TODO: handle error").inner);
+        let tokens = resolved_tokens(raw_tokens);
 
-        run(&mut state, tokens);
+        if let Err(err) = run(&mut state, tokens) {
+            print!("\n\n!> {line}!> ");
+            print!("{: <1$}", "", err.span.start);
+            println!("{:~<1$}", "", err.span.end - err.span.start);
+            print!("!> ");
+            print!("{: <1$}", "", err.span.start);
+            println!("^ ERROR: {}", err.inner);
+        }
 
         println!();
     }
